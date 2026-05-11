@@ -1,0 +1,238 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Global Deny
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email != null && 
+         request.auth.token.email_verified == true && 
+         request.auth.token.email == "volleyballapp06@gmail.com") ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    // Static check for list queries to avoid exists/get cost
+    function isHardcodedAdmin() {
+      return isSignedIn() && 
+             request.auth.token.email != null && 
+             request.auth.token.email_verified == true && 
+             request.auth.token.email == "volleyballapp06@gmail.com";
+    }
+
+    function isTournamentManager(tournamentId) {
+      return exists(/databases/$(database)/documents/tournaments/$(tournamentId)) && (
+        isAdmin() ||
+        get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.createdBy == request.auth.uid || 
+        (get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.editors != null && 
+         request.auth.uid in get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.editors)
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn(); 
+      allow create: if isOwner(userId) && 
+        incoming().keys().hasAll(['uid', 'displayName', 'email', 'role']) &&
+        incoming().uid == request.auth.uid;
+      allow update: if (isOwner(userId) || isAdmin()) &&
+        // Protect role and special permissions from self-escalation
+        (!incoming().diff(existing()).affectedKeys().hasAny(['role', 'canPostTournaments', 'isBanned']) || isAdmin()) &&
+        // Protect sensitive fields - only owner/admin can change email
+        (!incoming().diff(existing()).affectedKeys().hasAny(['email']) || isOwner(userId) || isAdmin()) &&
+        // Validate username if being changed
+        (!incoming().diff(existing()).affectedKeys().hasAny(['username']) || (
+          incoming().username == "" || (
+            incoming().username.matches('^[a-z0-9._]+$') &&
+            getAfter(/databases/$(database)/documents/usernames/$(incoming().username)).data.uid == userId
+          )
+        )) &&
+        // Protect critical fields
+        incoming().uid == existing().uid;
+    }
+
+    match /usernames/{username} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && 
+        username.matches('^[a-z0-9._]+$') &&
+        incoming().uid == request.auth.uid;
+      allow delete: if isSignedIn() && exists(/databases/$(database)/documents/usernames/$(username)) && get(/databases/$(database)/documents/usernames/$(username)).data.uid == request.auth.uid;
+    }
+
+    match /tournaments/{tournamentId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isAdmin() || incoming().createdBy == request.auth.uid);
+      allow update: if isSignedIn() && (isAdmin() || isTournamentManager(tournamentId));
+      allow delete: if isAdmin() || (resource.data.createdBy == request.auth.uid);
+    }
+
+    match /courts/{courtId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (isAdmin() || resource.data.createdBy == request.auth.uid);
+      allow delete: if isAdmin() || (resource.data.createdBy == request.auth.uid);
+    }
+
+    match /court_ratings/{ratingId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isAdmin() || incoming().userId == request.auth.uid);
+      allow update: if isSignedIn() && (isAdmin() || (existing().userId == request.auth.uid && incoming().userId == request.auth.uid));
+      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+    }
+
+    match /matches/{matchId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isAdmin() || incoming().createdBy == request.auth.uid);
+      allow update: if isSignedIn() && (isAdmin() || resource.data.createdBy == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /teams/{teamId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isAdmin() || incoming().captain == request.auth.uid);
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        resource.data.captain == request.auth.uid || 
+        // Allow a member to claim vacant captaincy
+        (existing().captain == '' && request.auth.uid in resource.data.members && incoming().captain == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['captain', 'deleteAt'])) ||
+        // Allow members to join themselves or toggle their ready status, and admins/captains to update logo
+        (incoming().diff(existing()).affectedKeys().hasAny(['members', 'readyPlayers', 'logoURL']) && 
+         !incoming().diff(existing()).affectedKeys().hasAny(['captain', 'name', 'stats', 'archived']) &&
+         (request.auth.uid in resource.data.members || incoming().members.hasAll(existing().members)))
+      );
+      allow delete: if isAdmin() || (resource.data.captain == request.auth.uid);
+    }
+
+    match /teamChallenges/{challengeId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isAdmin() || (exists(/databases/$(database)/documents/teams/$(incoming().fromTeamId)) && get(/databases/$(database)/documents/teams/$(incoming().fromTeamId)).data.captain == request.auth.uid));
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        get(/databases/$(database)/documents/teams/$(existing().toTeamId)).data.captain == request.auth.uid || 
+        get(/databases/$(database)/documents/teams/$(existing().fromTeamId)).data.captain == request.auth.uid
+      );
+      allow delete: if isSignedIn() && (
+        isAdmin() ||
+        get(/databases/$(database)/documents/teams/$(existing().fromTeamId)).data.captain == request.auth.uid
+      );
+    }
+
+    match /tournament_registrations/{regId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (
+        isAdmin() || (
+          incoming().teamId != null && 
+          exists(/databases/$(database)/documents/teams/$(incoming().teamId)) && 
+          get(/databases/$(database)/documents/teams/$(incoming().teamId)).data.captain == request.auth.uid
+        )
+      );
+      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+    }
+
+    match /lobbies/{lobbyId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incoming().hostId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.hostId == request.auth.uid || 
+        isAdmin() || 
+        (incoming().diff(existing()).affectedKeys().hasAny(['playerCount', 'status', 'endedAt', 'updatedAt']) &&
+         !incoming().diff(existing()).affectedKeys().hasAny(['hostId', 'createdAt', 'courtId']))
+      );
+      allow delete: if isSignedIn() && (resource.data.hostId == request.auth.uid || isAdmin());
+      
+      match /participants/{userId} {
+        allow read: if isSignedIn();
+        allow create: if isOwner(userId);
+        allow delete: if isOwner(userId) || isAdmin() || (get(/databases/$(database)/documents/lobbies/$(lobbyId)).data.hostId == request.auth.uid);
+      }
+    }
+
+    // ===============================================================
+    // Tournament Brackets & Matches
+    // ===============================================================
+
+    function isValidBracket(data) {
+      return data.keys().hasAll(['tournamentId', 'type', 'totalTeams', 'createdAt', 'updatedAt']) &&
+             data.tournamentId is string &&
+             data.totalTeams is number &&
+             data.type in ['single', 'round-robin'];
+    }
+
+    function isValidTournamentMatch(data) {
+      return data.roundIndex is number && 
+             data.matchIndex is number &&
+             data.status in ['pending', 'ongoing', 'completed'];
+    }
+
+    match /brackets/{bracketId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidBracket(incoming()) && (isAdmin() || isTournamentManager(incoming().tournamentId));
+      allow update: if isSignedIn() && (isAdmin() || isTournamentManager(existing().tournamentId));
+      allow delete: if isAdmin() || (isSignedIn() && isTournamentManager(existing().tournamentId));
+
+      match /matches/{matchId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isValidTournamentMatch(incoming()) && (isAdmin() || isTournamentManager(get(/databases/$(database)/documents/brackets/$(bracketId)).data.tournamentId));
+        allow update: if isSignedIn() && (isAdmin() || isTournamentManager(get(/databases/$(database)/documents/brackets/$(bracketId)).data.tournamentId));
+        allow delete: if isAdmin() || (isSignedIn() && isTournamentManager(get(/databases/$(database)/documents/brackets/$(bracketId)).data.tournamentId));
+      }
+    }
+
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isHardcodedAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isHardcodedAdmin());
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (existing().userId == request.auth.uid || isHardcodedAdmin()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['read']) || isHardcodedAdmin()
+      );
+      allow delete: if isSignedIn() && (existing().userId == request.auth.uid || isHardcodedAdmin());
+    }
+
+    match /tournament_posting_requests/{requestId} {
+      allow read: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid && incoming().status == 'pending';
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /tournament_inquiries/{inquiryId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid);
+      allow create: if isSignedIn() && incoming().fromId == request.auth.uid && incoming().read == false;
+      allow update: if isSignedIn() && resource.data.toId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+      allow delete: if isAdmin();
+    }
+  }
+}

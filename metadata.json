@@ -1,0 +1,8 @@
+{
+  "name": "Volleyball Connect Tamil Nadu",
+  "description": "A unified platform for volleyball players in Tamil Nadu to discover tournaments, find courts, track matches, and connect with other players.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}

@@ -1,0 +1,277 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and stats",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["player", "admin"] },
+        "tournamentReady": { "type": "boolean" },
+        "bio": { "type": "string" },
+        "location": { "type": "string" },
+        "geohash": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "lastActive": { "type": "string", "format": "date-time" },
+        "registeredTournaments": { "type": "array", "items": { "type": "string" } },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "tournamentMatches": { "type": "number" },
+            "friendlyMatches": { "type": "number" },
+            "wins": { "type": "number" }
+          }
+        },
+        "connections": { "type": "array", "items": { "type": "string" } },
+        "canPostTournaments": { "type": "boolean" },
+        "isBanned": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "email", "role"]
+    },
+    "Tournament": {
+      "title": "Tournament",
+      "description": "Volleyball tournament details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "district": { "type": "string" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "description": { "type": "string" },
+        "organizer": { "type": "string" },
+        "editors": { "type": "array", "items": { "type": "string" } },
+        "contact": { "type": "string" },
+        "status": { "type": "string", "enum": ["upcoming", "ongoing", "completed"] },
+        "paymentStatus": { "type": "string", "enum": ["pending", "paid"] },
+        "stripeSessionId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "location", "startDate", "status"]
+    },
+    "Court": {
+      "title": "Court",
+      "description": "Volleyball court location",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "geohash": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "district": { "type": "string" },
+        "facilities": { "type": "array", "items": { "type": "string" } },
+        "imageUrl": { "type": "string" },
+        "contact": { "type": "string" },
+        "rating": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "location"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "Match record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["tournament", "friendly", "team_challenge"] },
+        "tournamentId": { "type": "string" },
+        "teamAId": { "type": "string" },
+        "teamBId": { "type": "string" },
+        "teamAName": { "type": "string" },
+        "teamBName": { "type": "string" },
+        "scoreA": { "type": "number" },
+        "scoreB": { "type": "number" },
+        "winner": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["type", "date", "participants", "createdBy"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "Volleyball team",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "captain": { "type": "string" },
+        "members": { "type": "array", "items": { "type": "string" } },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "matchesPlayed": { "type": "number" },
+            "wins": { "type": "number" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "captain", "members"]
+    },
+    "TeamChallenge": {
+      "title": "TeamChallenge",
+      "description": "Match challenge between teams",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fromTeamId": { "type": "string" },
+        "toTeamId": { "type": "string" },
+        "fromTeamName": { "type": "string" },
+        "toTeamName": { "type": "string" },
+        "scheduledDate": { "type": "string", "format": "date-time" },
+        "location": { "type": "string" },
+        "courtId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected", "completed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fromTeamId", "toTeamId", "status"]
+    },
+    "CourtRating": {
+      "title": "CourtRating",
+      "description": "Individual court rating by user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "courtId": { "type": "string" },
+        "rating": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "courtId", "rating"]
+    },
+    "TournamentBracket": {
+      "title": "TournamentBracket",
+      "description": "Tournament bracket layout and state",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tournamentId": { "type": "string" },
+        "type": { "type": "string", "enum": ["single", "double"] },
+        "totalTeams": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["tournamentId", "type", "totalTeams"]
+    },
+    "TournamentMatch": {
+      "title": "TournamentMatch",
+      "description": "Individual match in a tournament bracket",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "bracketId": { "type": "string" },
+        "roundIndex": { "type": "number" },
+        "matchIndex": { "type": "number" },
+        "teamAId": { "type": "string" },
+        "teamBId": { "type": "string" },
+        "teamAName": { "type": "string" },
+        "teamBName": { "type": "string" },
+        "scoreA": { "type": "number" },
+        "scoreB": { "type": "number" },
+        "winnerId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "ongoing", "completed"] },
+        "nextMatchId": { "type": "string" }
+      },
+      "required": ["bracketId", "roundIndex", "matchIndex", "status"]
+    },
+    "UsernameMapping": {
+      "title": "UsernameMapping",
+      "description": "Ensures unique usernames",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" }
+      },
+      "required": ["uid"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "tournament", "match", "success"] },
+        "read": { "type": "boolean" },
+        "link": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "read", "createdAt"]
+    },
+    "TournamentPostingRequest": {
+      "title": "TournamentPostingRequest",
+      "description": "Request to become an authorized tournament poster",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "adminNotes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "status", "createdAt"]
+    },
+    "TournamentInquiry": {
+      "title": "TournamentInquiry",
+      "description": "A message from a viewer to a tournament organizer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tournamentId": { "type": "string" },
+        "tournamentTitle": { "type": "string" },
+        "fromId": { "type": "string" },
+        "fromName": { "type": "string" },
+        "toId": { "type": "string" },
+        "message": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["tournamentId", "fromId", "toId", "message", "read", "createdAt"]
+    },
+    "TournamentRegistration": {
+      "title": "TournamentRegistration",
+      "description": "A team registration for a tournament",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tournamentId": { "type": "string" },
+        "tournamentName": { "type": "string" },
+        "teamId": { "type": "string" },
+        "teamName": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["tournamentId", "teamId", "userId", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/tournaments/{tournamentId}": { "schema": "Tournament", "description": "Tournament listings" },
+    "/courts/{courtId}": { "schema": "Court", "description": "Court locations" },
+    "/matches/{matchId}": { "schema": "Match", "description": "Match records" },
+    "/teams/{teamId}": { "schema": "Team", "description": "Teams" },
+    "/teamChallenges/{challengeId}": { "schema": "TeamChallenge", "description": "Team match challenges" },
+    "/court_ratings/{ratingId}": { "schema": "CourtRating", "description": "Court ratings" },
+    "/brackets/{bracketId}": { "schema": "TournamentBracket", "description": "Tournament brackets" },
+    "/brackets/{bracketId}/matches/{matchId}": { "schema": "TournamentMatch", "description": "Bracket matches" },
+    "/usernames/{username}": { "schema": "UsernameMapping", "description": "Unique username lookups" },
+    "/notifications/{notificationId}": { "schema": "Notification", "description": "User notifications" },
+    "/tournament_posting_requests/{requestId}": { "schema": "TournamentPostingRequest", "description": "Tournament posting authorizations" },
+    "/tournament_inquiries/{inquiryId}": { "schema": "TournamentInquiry", "description": "Messages regarding specific tournaments" },
+    "/tournament_registrations/{registrationId}": { "schema": "TournamentRegistration", "description": "Tournament registrations" }
+  }
+}
