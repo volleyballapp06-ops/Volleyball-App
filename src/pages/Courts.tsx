@@ -17,6 +17,7 @@ import { Court, TeamChallenge } from '../types';
 import { calculateDistance, cn } from '../lib/utils';
 import { ImageUpload } from '../components/ImageUpload';
 import { generateGeohash } from '../lib/geo';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 function CourtImageCarousel({ images, name, courtId }: { images: string[], name: string, courtId: string }) {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -95,6 +96,10 @@ export default function Courts() {
   const [selectedCourt, setSelectedCourt] = useState<Court | null>(null);
   const [userRatings, setUserRatings] = useState<Record<string, number>>({});
   const [isNearbyOnly, setIsNearbyOnly] = useState(true);
+  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; court: Court | null }>({
+    isOpen: false,
+    court: null
+  });
   const [newCourt, setNewCourt] = useState({
     name: '',
     location: '',
@@ -298,9 +303,12 @@ export default function Courts() {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete ${court.name}? This action cannot be undone.`)) {
-      return;
-    }
+    setConfirmDelete({ isOpen: true, court });
+  };
+
+  const confirmDeleteAction = async () => {
+    const court = confirmDelete.court;
+    if (!court || !user) return;
 
     try {
       console.log(`Attempting to delete court: ${court.id}`);
@@ -309,6 +317,7 @@ export default function Courts() {
       if (selectedCourt?.id === court.id) {
         setSelectedCourt(null);
       }
+      setConfirmDelete({ isOpen: false, court: null });
     } catch (error) {
       console.error('Delete failed:', error);
       handleFirestoreError(error, OperationType.DELETE, `courts/${court.id}`);
@@ -933,6 +942,16 @@ export default function Courts() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmModal
+        isOpen={confirmDelete.isOpen}
+        title="Delete Court"
+        description={`Are you sure you want to delete ${confirmDelete.court?.name}? This action cannot be undone.`}
+        confirmText="Delete"
+        variant="destructive"
+        onConfirm={confirmDeleteAction}
+        onCancel={() => setConfirmDelete({ isOpen: false, court: null })}
+      />
     </div>
   );
 }

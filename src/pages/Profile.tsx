@@ -320,7 +320,7 @@ export default function Profile() {
           {/* Avatar Area */}
           <div className="relative">
             <Avatar className="w-32 h-32 md:w-48 md:h-48 border-[6px] border-card shadow-2xl rounded-3xl">
-              <AvatarImage src={profile?.photoURL || ''} referrerPolicy="no-referrer" />
+              <AvatarImage src={profile?.photoURL || undefined} referrerPolicy="no-referrer" />
               <AvatarFallback className="bg-primary/10 text-primary text-4xl font-black italic">
                 {profile?.displayName?.substring(0, 2).toUpperCase()}
               </AvatarFallback>
@@ -380,7 +380,7 @@ export default function Profile() {
                       <div className="grid gap-4 py-4">
                         <div className="flex flex-col items-center gap-4 mb-4">
                           <Avatar className="w-24 h-24 border-2 border-primary/20 rounded-2xl">
-                            <AvatarImage src={editForm.photoURL} referrerPolicy="no-referrer" />
+                            <AvatarImage src={editForm.photoURL || undefined} referrerPolicy="no-referrer" />
                             <AvatarFallback className="bg-muted text-primary text-xl font-bold">
                               {editForm.displayName?.substring(0, 2).toUpperCase()}
                             </AvatarFallback>

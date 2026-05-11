@@ -105,7 +105,13 @@
         "id": { "type": "string" },
         "name": { "type": "string" },
         "captain": { "type": "string" },
+        "description": { "type": "string" },
+        "logoURL": { "type": "string" },
+        "teamCode": { "type": "string" },
         "members": { "type": "array", "items": { "type": "string" } },
+        "readyPlayers": { "type": "array", "items": { "type": "string" } },
+        "archived": { "type": "boolean" },
+        "deleteAt": { "type": "string", "format": "date-time" },
         "stats": {
           "type": "object",
           "properties": {
@@ -206,23 +212,6 @@
       },
       "required": ["userId", "title", "message", "read", "createdAt"]
     },
-    "TournamentPostingRequest": {
-      "title": "TournamentPostingRequest",
-      "description": "Request to become an authorized tournament poster",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "userEmail": { "type": "string" },
-        "message": { "type": "string" },
-        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
-        "adminNotes": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["userId", "userName", "status", "createdAt"]
-    },
     "TournamentInquiry": {
       "title": "TournamentInquiry",
       "description": "A message from a viewer to a tournament organizer",
@@ -252,10 +241,26 @@
         "teamName": { "type": "string" },
         "userId": { "type": "string" },
         "userName": { "type": "string" },
-        "status": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending Approval", "Registered", "Rejected"] },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["tournamentId", "teamId", "userId", "status", "createdAt"]
+    },
+    "ConnectionRequest": {
+      "title": "ConnectionRequest",
+      "description": "A request to connect with another player",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fromId": { "type": "string" },
+        "toId": { "type": "string" },
+        "fromName": { "type": "string" },
+        "toName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fromId", "toId", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -270,8 +275,8 @@
     "/brackets/{bracketId}/matches/{matchId}": { "schema": "TournamentMatch", "description": "Bracket matches" },
     "/usernames/{username}": { "schema": "UsernameMapping", "description": "Unique username lookups" },
     "/notifications/{notificationId}": { "schema": "Notification", "description": "User notifications" },
-    "/tournament_posting_requests/{requestId}": { "schema": "TournamentPostingRequest", "description": "Tournament posting authorizations" },
     "/tournament_inquiries/{inquiryId}": { "schema": "TournamentInquiry", "description": "Messages regarding specific tournaments" },
-    "/tournament_registrations/{registrationId}": { "schema": "TournamentRegistration", "description": "Tournament registrations" }
+    "/tournament_registrations/{registrationId}": { "schema": "TournamentRegistration", "description": "Tournament registrations" },
+    "/connection_requests/{requestId}": { "schema": "ConnectionRequest", "description": "Player connection requests" }
   }
 }

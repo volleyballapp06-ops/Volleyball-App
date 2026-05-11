@@ -16,7 +16,7 @@ import LiveScoreboard from './LiveScoreboard';
 interface BracketBuilderProps {
   tournamentId: string;
   isOrganizer: boolean;
-  teams: { userId: string; userName: string }[];
+  teams: { userId: string; userName: string; teamName?: string }[];
 }
 
 export default function BracketBuilder({ tournamentId, isOrganizer, teams }: BracketBuilderProps) {
@@ -103,11 +103,11 @@ export default function BracketBuilder({ tournamentId, isOrganizer, teams }: Bra
             
             if (teamAIdx < teams.length) {
               matchData.teamAId = teams[teamAIdx].userId;
-              matchData.teamAName = teams[teamAIdx].userName;
+              matchData.teamAName = teams[teamAIdx].teamName || teams[teamAIdx].userName;
             }
             if (teamBIdx < teams.length) {
               matchData.teamBId = teams[teamBIdx].userId;
-              matchData.teamBName = teams[teamBIdx].userName;
+              matchData.teamBName = teams[teamBIdx].teamName || teams[teamBIdx].userName;
             } else if (teamAIdx < teams.length) {
               matchData.status = 'completed';
               matchData.winnerId = matchData.teamAId;
@@ -229,9 +229,9 @@ export default function BracketBuilder({ tournamentId, isOrganizer, teams }: Bra
             roundIndex: 0,
             matchIndex: matchIdx,
             teamAId: teams[i].userId,
-            teamAName: teams[i].userName,
+            teamAName: teams[i].teamName || teams[i].userName,
             teamBId: teams[j].userId,
-            teamBName: teams[j].userName,
+            teamBName: teams[j].teamName || teams[j].userName,
             scoreA: 0,
             scoreB: 0,
             status: 'pending',
@@ -537,10 +537,11 @@ export default function BracketBuilder({ tournamentId, isOrganizer, teams }: Bra
               if (!selectedSlot) return;
               const team = teams.find(t => t.userId === val);
               if (team) {
+                const teamName = team.teamName || team.userName;
                 if (selectedSlot.slot === 'A') {
-                  updateMatchFixture(selectedSlot.matchId, team.userId, team.userName, undefined, undefined);
+                  updateMatchFixture(selectedSlot.matchId, team.userId, teamName, undefined, undefined);
                 } else {
-                  updateMatchFixture(selectedSlot.matchId, undefined, undefined, team.userId, team.userName);
+                  updateMatchFixture(selectedSlot.matchId, undefined, undefined, team.userId, teamName);
                 }
                 setSelectedSlot(null);
               }
@@ -551,7 +552,7 @@ export default function BracketBuilder({ tournamentId, isOrganizer, teams }: Bra
               <SelectContent>
                 <SelectItem value="clear">-- Clear Slot (TBD) --</SelectItem>
                 {teams.map(t => (
-                  <SelectItem key={t.userId} value={t.userId}>{t.userName}</SelectItem>
+                  <SelectItem key={t.userId} value={t.userId}>{t.teamName || t.userName}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

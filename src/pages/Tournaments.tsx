@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { db, OperationType, handleFirestoreError } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, doc, updateDoc, getDoc, where, increment, getDocs, deleteDoc, limit } from 'firebase/firestore';
-import { Trophy, MapPin, Calendar, Search, Filter, Plus, Loader2, CheckCircle2, Edit2, Trash2, MoreVertical, Zap, Users, XCircle, X, Phone, Mail, Crown, Shield, MessageSquare, AlertCircle, Sparkles, Send } from 'lucide-react';
+import { Trophy, MapPin, Calendar, Search, Filter, Plus, Loader2, CheckCircle2, Edit2, Trash2, MoreVertical, Zap, Users, XCircle, X, Phone, Mail, Crown, Shield, MessageSquare, Sparkles, Send, Hash } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Button, buttonVariants } from '../components/ui/button';
@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import { Link, useSearchParams } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
-import { Tournament, Team, TournamentPostingRequest, TournamentInquiry } from '../types';
+import { Tournament, Team, TournamentInquiry } from '../types';
 import BracketBuilder from '../components/BracketBuilder';
 import TournamentLiveMatches from '../components/TournamentLiveMatches';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
@@ -38,11 +38,42 @@ export default function Tournaments() {
   const [confirmTournament, setConfirmTournament] = useState<Tournament | null>(null);
   const [cancelConfirmTournament, setCancelConfirmTournament] = useState<Tournament | null>(null);
   const [detailsTournament, setDetailsTournament] = useState<Tournament | null>(null);
-  const [registeredPlayers, setRegisteredPlayers] = useState<{userId: string, userName: string}[]>([]);
+  const [registeredPlayers, setRegisteredPlayers] = useState<{id: string, userId: string, userName: string, teamName: string, status: string}[]>([]);
+  const [pendingRegistrations, setPendingRegistrations] = useState<{id: string, userId: string, userName: string, teamName: string}[]>([]);
   const [manageSearchTerm, setManageSearchTerm] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<{uid: string, displayName: string, photoURL?: string}[]>([]);
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
   const [editorProfiles, setEditorProfiles] = useState<Record<string, {displayName: string, photoURL?: string}>>({});
+
+  const handleRegistrationAction = async (registrationId: string, action: 'approve' | 'reject') => {
+    if (!detailsTournament) return;
+    
+    try {
+      const status = action === 'approve' ? 'Registered' : 'Rejected';
+      const registration = [...registeredPlayers, ...pendingRegistrations].find(r => r.id === registrationId);
+      
+      await updateDoc(doc(db, 'tournament_registrations', registrationId), {
+        status,
+        updatedAt: serverTimestamp()
+      });
+
+      if (registration && registration.userId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: registration.userId,
+          title: `Tournament Registration ${action === 'approve' ? 'Approved' : 'Rejected'}`,
+          message: `Your registration for ${detailsTournament.name} has been ${status.toLowerCase()}.`,
+          type: action === 'approve' ? 'success' : 'destructive',
+          link: `/tournaments?id=${detailsTournament.id}`,
+          createdAt: serverTimestamp()
+        });
+      }
+
+      toast.success(`Registration ${status}`);
+    } catch (error) {
+      console.error(`Failed to ${action} registration:`, error);
+      toast.error(`Failed to ${action} registration`);
+    }
+  };
 
   useEffect(() => {
     if (!detailsTournament?.editors || detailsTournament.editors.length === 0) return;
@@ -72,164 +103,6 @@ export default function Tournaments() {
 
     fetchProfiles();
   }, [detailsTournament?.editors]);
-  const [isRequesting, setIsRequesting] = useState(false);
-  const [requestMessage, setRequestMessage] = useState('');
-  const [organizerRequests, setOrganizerRequests] = useState<TournamentPostingRequest[]>([]);
-  const [myRequest, setMyRequest] = useState<TournamentPostingRequest | null>(null);
-  const [inquiryTournament, setInquiryTournament] = useState<Tournament | null>(null);
-  const [inquiryMessage, setInquiryMessage] = useState('');
-  const [myInquiries, setMyInquiries] = useState<TournamentInquiry[]>([]);
-
-  const WHATSAPP_NUMBER = "919000000000"; // REPLACE WITH YOUR WHATSAPP NUMBER
-
-  useEffect(() => {
-    if (!user) {
-      setOrganizerRequests([]);
-      setMyRequest(null);
-      setMyInquiries([]);
-      return;
-    }
-
-    // Organizers see inquiries for their tournaments OR their own inquiries sent to others
-    const qInquiries = query(
-      collection(db, 'tournament_inquiries'), 
-      where('toId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-    
-    const unsubscribeInquiries = onSnapshot(qInquiries, (snapshot) => {
-      setMyInquiries(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TournamentInquiry)));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'tournament_inquiries');
-    });
-
-    // Admin sees all requests
-    if (profile?.role === 'admin') {
-      const q = query(collection(db, 'tournament_posting_requests'), orderBy('createdAt', 'desc'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        setOrganizerRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TournamentPostingRequest)));
-      }, (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'tournament_posting_requests');
-      });
-      return unsubscribe;
-    } else {
-      // Regular user sees only their request
-      const q = query(collection(db, 'tournament_posting_requests'), where('userId', '==', user.uid), limit(1));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        if (!snapshot.empty) {
-          setMyRequest({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as TournamentPostingRequest);
-        } else {
-          setMyRequest(null);
-        }
-      }, (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'tournament_posting_requests');
-      });
-      return unsubscribe;
-    }
-  }, [user, profile]);
-
-  const handleRequestPost = async () => {
-    if (!user || !profile) return;
-    if (!requestMessage.trim()) {
-      toast.error("Please enter a message for the admin");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await addDoc(collection(db, 'tournament_posting_requests'), {
-        userId: user.uid,
-        userName: profile.displayName,
-        userEmail: profile.email,
-        message: requestMessage,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-      });
-      toast.success("Request sent successfully! Admin will contact you soon.");
-      setIsRequesting(false);
-      setRequestMessage('');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'tournament_posting_requests');
-      toast.error("Failed to send request");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleProcessRequest = async (request: TournamentPostingRequest, status: 'approved' | 'rejected') => {
-    try {
-      await updateDoc(doc(db, 'tournament_posting_requests', request.id), {
-        status,
-        updatedAt: serverTimestamp()
-      });
-
-      if (status === 'approved') {
-        const userRef = doc(db, 'users', request.userId);
-        await updateDoc(userRef, {
-          canPostTournaments: true
-        });
-        toast.success(`User ${request.userName} approved to post tournaments`);
-      } else {
-        toast.info(`Request from ${request.userName} rejected`);
-      }
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'tournament_posting_requests');
-      toast.error("Failed to process request");
-    }
-  };
-
-  const handleSendInquiry = async () => {
-    if (!user || !profile || !inquiryTournament) return;
-    if (!inquiryMessage.trim()) {
-      toast.error("Please enter a message");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await addDoc(collection(db, 'tournament_inquiries'), {
-        tournamentId: inquiryTournament.id,
-        tournamentTitle: inquiryTournament.name,
-        fromId: user.uid,
-        fromName: profile.displayName,
-        toId: inquiryTournament.organizer,
-        message: inquiryMessage,
-        read: false,
-        createdAt: serverTimestamp(),
-      });
-      
-      // Also send a notification to the organizer
-      await addDoc(collection(db, 'notifications'), {
-        userId: inquiryTournament.organizer,
-        title: 'New Tournament Inquiry',
-        message: `${profile.displayName} messaged you about ${inquiryTournament.name}`,
-        type: 'tournament',
-        read: false,
-        link: `/tournaments`,
-        createdAt: serverTimestamp(),
-      });
-
-      toast.success("Message sent to organizer!");
-      setInquiryTournament(null);
-      setInquiryMessage('');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'tournament_inquiries');
-      toast.error("Failed to send message");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleMarkInquiryRead = async (inquiryId: string) => {
-    try {
-      await updateDoc(doc(db, 'tournament_inquiries', inquiryId), {
-        read: true
-      });
-    } catch (error) {
-      console.error("Failed to mark inquiry as read", error);
-    }
-  };
-
   useEffect(() => {
     const searchUsers = async () => {
       if (!user) return;
@@ -463,10 +336,14 @@ export default function Tournaments() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const players = snapshot.docs.map(doc => ({
+        id: doc.id,
         userId: doc.data().userId,
-        userName: doc.data().userName
+        userName: doc.data().userName,
+        teamName: doc.data().teamName,
+        status: doc.data().status
       }));
-      setRegisteredPlayers(players);
+      setRegisteredPlayers(players.filter(p => p.status === 'Registered'));
+      setPendingRegistrations(players.filter(p => p.status === 'Pending Approval'));
     }, (error) => {
       console.error("Error fetching registered players:", error);
     });
@@ -476,6 +353,9 @@ export default function Tournaments() {
 
   const [userCaptainedTeams, setUserCaptainedTeams] = useState<Team[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
+  const [teamCodeInput, setTeamCodeInput] = useState<string>('');
+  const [isVerifyingTeam, setIsVerifyingTeam] = useState(false);
+  const [verifiedTeam, setVerifiedTeam] = useState<Team | null>(null);
   const [isSelectingTeam, setIsSelectingTeam] = useState(false);
 
   useEffect(() => {
@@ -517,19 +397,50 @@ export default function Tournaments() {
       return;
     }
 
-    // If user has multiple teams, we should let them select one
-    if (userCaptainedTeams.length > 1 && !isSelectingTeam) {
-      setConfirmTournament(tournament);
-      setIsSelectingTeam(true);
+    // We now use team code verification
+    setConfirmTournament(tournament);
+    setTeamCodeInput('');
+    setVerifiedTeam(null);
+    setIsSelectingTeam(true);
+  };
+
+  const verifyAndRegister = async () => {
+    if (!user || !profile || !confirmTournament) return;
+
+    if (!teamCodeInput.trim()) {
+      toast.error('Please enter your team code');
       return;
     }
 
-    const teamToRegister = userCaptainedTeams.find(t => t.id === (selectedTeamId || userCaptainedTeams[0]?.id));
-    if (!teamToRegister) {
-      toast.error('Please select a valid team');
-      return;
-    }
+    setIsVerifyingTeam(true);
+    try {
+      const q = query(
+        collection(db, 'teams'), 
+        where('teamCode', '==', teamCodeInput.trim().toUpperCase()),
+        where('captain', '==', user.uid)
+      );
+      const snapshot = await getDocs(q);
 
+      if (snapshot.empty) {
+        toast.error('Invalid team code or you are not the captain of this team');
+        setIsVerifyingTeam(false);
+        return;
+      }
+
+      const teamToRegister = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Team;
+      setVerifiedTeam(teamToRegister);
+      
+      // Proceed with registration
+      await performRegistration(confirmTournament, teamToRegister);
+    } catch (error) {
+      console.error('Verification/Registration failed', error);
+      toast.error('Failed to verify team code');
+    } finally {
+      setIsVerifyingTeam(false);
+    }
+  };
+
+  const performRegistration = async (tournament: Tournament, teamToRegister: Team) => {
     setIsSubmitting(true);
     try {
       // 1. Add registration record
@@ -540,20 +451,34 @@ export default function Tournaments() {
         teamName: teamToRegister.name,
         userId: user.uid, // Still track who registered it
         userName: profile.displayName,
-        status: 'Registered',
+        status: 'Pending Approval',
         createdAt: serverTimestamp()
       });
 
-      // 2. Update user profile - although it might be better to update team stats later
+      // 2. Update user profile
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, {
         'stats.tournamentMatches': increment(1),
         registeredTournaments: [...(profile.registeredTournaments || []), tournament.id]
       });
 
-      toast.success(`Team ${teamToRegister.name} successfully registered for ${tournament.name}`);
+      // Notify the organizer
+      if (tournament.createdBy) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: tournament.createdBy,
+          title: 'New Tournament Entry!',
+          message: `${teamToRegister.name} has applied for ${tournament.name}. Please review the application.`,
+          type: 'tournament',
+          link: `/tournaments?id=${tournament.id}`,
+          createdAt: serverTimestamp()
+        });
+      }
+
+      toast.success(`Application for ${teamToRegister.name} sent successfully to ${tournament.name}`);
       setConfirmTournament(null);
       setIsSelectingTeam(false);
+      setVerifiedTeam(null);
+      setTeamCodeInput('');
     } catch (error) {
       console.error('Registration failed', error);
       toast.error('Failed to register. Please try again.');
@@ -601,7 +526,9 @@ export default function Tournaments() {
       return;
     }
 
-    if (user.email !== 'volleyballapp06@gmail.com') {
+    const canPostAuth = profile?.role === 'admin' || profile?.canPostTournaments || user.email === 'volleyballapp06@gmail.com';
+    
+    if (!canPostAuth) {
       toast.error('Only authorized personnel can post tournaments');
       return;
     }
@@ -674,8 +601,34 @@ export default function Tournaments() {
 
   const canPost = profile?.role === 'admin' || profile?.canPostTournaments || user?.email === 'volleyballapp06@gmail.com';
 
+  const handleWhatsAppContact = () => {
+    const message = encodeURIComponent("Hi! I would like to post a tournament on the platform. Here are the details: ");
+    window.open(`https://wa.me/919677827734?text=${message}`, '_blank');
+  };
+
   return (
     <div className="flex flex-col gap-6 md:gap-8 min-h-[calc(100vh-8rem)]">
+      {/* WhatsApp Hero CTA */}
+      <section className="bg-primary rounded-[2.5rem] p-8 text-white shadow-2xl shadow-primary/20 relative overflow-hidden group">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:scale-110 transition-transform duration-1000" />
+        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="text-center md:text-left space-y-2">
+            <h1 className="text-3xl md:text-4xl font-black tracking-tighter uppercase italic">
+              Host <span className="text-white/60">Your</span> Tournament
+            </h1>
+            <p className="text-white/80 font-medium max-w-md text-sm md:text-base">
+              Want to list your tournament? Contact our team directly on WhatsApp to get started.
+            </p>
+          </div>
+          <Button 
+            onClick={handleWhatsAppContact}
+            className="bg-white text-primary hover:bg-white/90 h-14 px-8 rounded-2xl font-black uppercase tracking-widest shadow-xl flex items-center gap-3 transition-all active:scale-95"
+          >
+            <Phone className="w-5 h-5 fill-current" />
+            Contact on WhatsApp
+          </Button>
+        </div>
+      </section>
       <ConfirmModal
         isOpen={confirmConfig.isOpen}
         title={confirmConfig.title}
@@ -843,78 +796,7 @@ export default function Tournaments() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-          ) : user && (
-            <Dialog open={isRequesting} onOpenChange={setIsRequesting}>
-              <DialogTrigger className={cn(buttonVariants({ variant: "outline" }), "h-11 border-primary/20 text-primary hover:bg-primary hover:text-white font-bold rounded-xl active:scale-95 transition-all shadow-sm")}>
-                <Sparkles className="w-4 h-4 mr-2" />
-                {myRequest ? 'Status: ' + myRequest.status.toUpperCase() : 'Request to Post'}
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Become a Tournament Host</DialogTitle>
-                  <DialogDescription>
-                    Send a request to the admin to get permission to post tournaments.
-                  </DialogDescription>
-                </DialogHeader>
-                
-                {myRequest ? (
-                  <div className="py-6 text-center space-y-4">
-                    <div className={cn(
-                      "w-16 h-16 rounded-full mx-auto flex items-center justify-center",
-                      myRequest.status === 'pending' ? "bg-amber-500/10 text-amber-500" :
-                      myRequest.status === 'approved' ? "bg-emerald-500/10 text-emerald-500" :
-                      "bg-destructive/10 text-destructive"
-                    )}>
-                      {myRequest.status === 'pending' ? <Loader2 className="w-8 h-8 animate-spin" /> : 
-                       myRequest.status === 'approved' ? <CheckCircle2 className="w-8 h-8" /> : 
-                       <XCircle className="w-8 h-8" />}
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-lg mb-1 uppercase italic">Request {myRequest.status}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {myRequest.status === 'pending' ? "Your request is under review. Please wait for an admin to process it." :
-                         myRequest.status === 'approved' ? "You now have permission to post tournaments!" :
-                         "Your request was not approved at this time. Please contact support for more information."}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="request-msg">Your Inquiry Message</Label>
-                      <textarea 
-                        id="request-msg"
-                        className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        placeholder="Tell us about the tournament you want to host and your experience..."
-                        value={requestMessage}
-                        onChange={(e) => setRequestMessage(e.target.value)}
-                      />
-                    </div>
-                    <div className="bg-primary/5 p-4 rounded-xl border border-primary/10">
-                      <div className="flex items-start gap-3">
-                        <AlertCircle className="w-4 h-4 text-primary mt-0.5" />
-                        <p className="text-xs text-primary/80 leading-relaxed font-medium">
-                          After submitting, the admin will review your inquiry and may contact you for further details regarding the tournament post.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {!myRequest && (
-                  <DialogFooter>
-                    <Button 
-                      className="w-full font-bold uppercase tracking-widest"
-                      onClick={handleRequestPost}
-                      disabled={isSubmitting || !requestMessage.trim()}
-                    >
-                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : 'Send Inquiry Request'}
-                    </Button>
-                  </DialogFooter>
-                )}
-              </DialogContent>
-            </Dialog>
-          )}
+          ) : null}
 
           <Dialog open={isEditing} onOpenChange={(open) => {
             setIsEditing(open);
@@ -1028,132 +910,6 @@ export default function Tournaments() {
       </div>
 
       {/* Admin/Organizer Dashboards */}
-      <div className="flex flex-col gap-6 mb-8">
-        {/* Organizer Requests (Admin Only) */}
-        {profile?.role === 'admin' && organizerRequests.filter(r => r.status === 'pending').length > 0 && (
-          <section className="bg-amber-500/5 border border-amber-500/10 rounded-3xl p-6 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-1000 -rotate-12 group-hover:rotate-0">
-               <Shield className="w-24 h-24 text-amber-500" />
-            </div>
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-sm font-black uppercase tracking-widest italic flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-500" /> Posting Requests
-                </h2>
-                <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/20 font-bold uppercase tracking-tighter text-[10px]">
-                  {organizerRequests.filter(r => r.status === 'pending').length} ACTION
-                </Badge>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {organizerRequests.filter(r => r.status === 'pending').map((request) => (
-                  <div key={request.id} className="bg-card border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all border-white/5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500">
-                        <Users className="w-5 h-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="font-bold text-sm truncate">{request.userName}</h4>
-                        <p className="text-[10px] text-muted-foreground truncate uppercase font-black tracking-widest">{request.userEmail}</p>
-                      </div>
-                    </div>
-                    <div className="bg-muted/30 p-3 rounded-xl border border-border mb-4">
-                      <p className="text-[11px] leading-relaxed italic text-muted-foreground">
-                        "{request.message}"
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button 
-                        className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] h-8 rounded-xl"
-                        onClick={() => handleProcessRequest(request, 'approved')}
-                      >
-                        Approve
-                      </Button>
-                      <Button 
-                        variant="outline"
-                        className="flex-1 font-bold text-[10px] h-8 rounded-xl"
-                        onClick={() => handleProcessRequest(request, 'rejected')}
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* Tournament Inquiries (Organizers Only) */}
-        {myInquiries.length > 0 && (
-          <section className="bg-emerald-500/5 border border-emerald-500/10 rounded-3xl p-6 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-1000 -rotate-12 group-hover:rotate-0">
-               <MessageSquare className="w-24 h-24 text-emerald-500" />
-            </div>
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-sm font-black uppercase tracking-widest italic flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-emerald-500" /> Received Inquiries
-                </h2>
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 font-bold uppercase tracking-tighter text-[10px]">
-                  {myInquiries.filter(i => !i.read).length} UNREAD
-                </Badge>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {myInquiries.map((inquiry) => (
-                  <div 
-                    key={inquiry.id} 
-                    className={cn(
-                      "bg-card border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all",
-                      inquiry.read ? "border-white/5 opacity-60" : "border-emerald-500/30 ring-1 ring-emerald-500/10"
-                    )}
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                          <Users className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="font-bold text-xs truncate">{inquiry.fromName}</h4>
-                          <p className="text-[9px] text-emerald-500 font-black uppercase tracking-widest truncate">{inquiry.tournamentTitle}</p>
-                        </div>
-                      </div>
-                      {!inquiry.read && (
-                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                      )}
-                    </div>
-                    <div className="bg-muted/30 p-3 rounded-xl border border-white/5 mb-4 max-h-32 overflow-y-auto">
-                      <p className="text-[11px] leading-relaxed italic text-muted-foreground whitespace-pre-wrap">
-                        "{inquiry.message}"
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      {!inquiry.read && (
-                        <Button 
-                          className="flex-1 bg-white/[0.05] hover:bg-white/10 text-white font-bold text-[9px] h-8 rounded-xl border border-white/5"
-                          onClick={() => handleMarkInquiryRead(inquiry.id)}
-                        >
-                          Mark as Read
-                        </Button>
-                      )}
-                      <a 
-                        href={`mailto:${inquiry.id}?subject=Tournament Inquiry: ${inquiry.tournamentTitle}`}
-                        className={cn(
-                          buttonVariants({ variant: "outline" }),
-                          "flex-1 font-bold text-[9px] h-8 rounded-xl border-white/5 flex items-center justify-center transition-all"
-                        )}
-                      >
-                        Reply via Email
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
-      </div>
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1247,30 +1003,39 @@ export default function Tournaments() {
                         >
                           Details
                         </Button>
-                        {user?.uid !== tournament.createdBy && (
-                          <Button 
-                            variant="outline" 
-                            className="w-full sm:w-10 h-10 p-0 rounded-xl border-white/5 hover:bg-white/10 transition-all hover:text-primary active:scale-95 group flex items-center justify-center shrink-0"
-                            onClick={() => {
-                              setInquiryTournament(tournament);
-                              setInquiryMessage("");
-                            }}
-                          >
-                            <MessageSquare className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                            <span className="sm:hidden ml-2 font-bold text-[10px] uppercase tracking-widest">Message Organizer</span>
-                          </Button>
-                        )}
                       </div>
 
                       {(() => {
                         const registration = userRegistrations.find(r => r.tournamentId === tournament.id);
                         if (registration) {
-                          if (registration.status === 'Pending') {
+                          if (registration.status === 'Pending Approval') {
                             return (
-                              <Button className="bg-muted text-muted-foreground font-bold border border-border" disabled>
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                Pending
-                              </Button>
+                              <div className="flex flex-col gap-2">
+                                <Button className="bg-amber-500/10 text-amber-500 font-bold border border-amber-500/20 cursor-default" disabled>
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  Applied
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  onClick={() => setCancelConfirmTournament(tournament)}
+                                  className="text-muted-foreground hover:text-destructive font-bold text-[10px] uppercase tracking-wider"
+                                  disabled={isSubmitting}
+                                >
+                                  Withdraw
+                                </Button>
+                              </div>
+                            );
+                          }
+                          if (registration.status === 'Rejected') {
+                            return (
+                              <div className="flex flex-col gap-2">
+                                <Button className="bg-destructive/10 text-destructive font-bold border border-destructive/20 cursor-default" disabled>
+                                  <XCircle className="w-4 h-4 mr-2" />
+                                  Rejected
+                                </Button>
+                                <p className="text-[9px] text-center text-muted-foreground font-medium italic">Contact organizer for details</p>
+                              </div>
                             );
                           }
                           return (
@@ -1356,13 +1121,25 @@ export default function Tournaments() {
               <TabsTrigger value="bracket" className="rounded-lg font-bold text-xs uppercase tracking-widest gap-2">
                 <Trophy className="w-3 h-3" /> Bracket
               </TabsTrigger>
-              <TabsTrigger value="players" className="rounded-lg font-bold text-xs uppercase tracking-widest">Players</TabsTrigger>
+              <TabsTrigger value="players" className="rounded-lg font-bold text-xs uppercase tracking-widest relative">
+                Players
+                {registeredPlayers.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-white text-[8px] flex items-center justify-center rounded-full border border-background">
+                    {registeredPlayers.length}
+                  </span>
+                )}
+              </TabsTrigger>
               <TabsTrigger 
                 value="manage" 
-                disabled={!(detailsTournament?.createdBy === user?.uid || profile?.role === 'admin')}
-                className="rounded-lg font-bold text-xs uppercase tracking-widest"
+                disabled={!(detailsTournament?.createdBy === user?.uid || profile?.role === 'admin' || (detailsTournament?.editors || []).includes(user?.uid || ''))}
+                className="rounded-lg font-bold text-xs uppercase tracking-widest relative"
               >
                 Manage
+                {pendingRegistrations.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white text-[8px] flex items-center justify-center rounded-full border border-background animate-pulse">
+                    {pendingRegistrations.length}
+                  </span>
+                )}
               </TabsTrigger>
             </TabsList>
 
@@ -1433,27 +1210,28 @@ export default function Tournaments() {
 
             <TabsContent value="players" className="mt-4 space-y-4">
               <div className="flex items-center justify-between mb-3">
-                <h4 className="text-[13px] font-bold text-foreground">Registered Players</h4>
+                <h4 className="text-[13px] font-bold text-foreground">Registered Teams</h4>
                 <Badge variant="secondary" className="bg-primary/5 text-primary border-none text-[10px] font-bold">
-                  {registeredPlayers.length} Joined
+                  {registeredPlayers.length} Approved
                 </Badge>
               </div>
               <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                 {registeredPlayers.length > 0 ? (
                   registeredPlayers.map((player) => (
                     <div 
-                      key={player.userId}
-                      className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg border border-border/50"
+                      key={player.id}
+                      className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl border border-border/50"
                     >
-                      <Avatar className="w-8 h-8">
-                        <AvatarFallback className="text-[10px] bg-primary/10 text-primary font-bold">
-                          {player.userName.substring(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm font-medium">{player.userName}</span>
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                        <Users className="w-5 h-5" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold">{player.teamName}</span>
+                        <span className="text-[10px] text-muted-foreground">Captain: {player.userName}</span>
+                      </div>
                       {player.userId === user?.uid && (
                         <Badge variant="outline" className="ml-auto text-[9px] font-bold uppercase border-primary/20 text-primary bg-primary/5">
-                          You
+                          Your Team
                         </Badge>
                       )}
                     </div>
@@ -1461,13 +1239,58 @@ export default function Tournaments() {
                 ) : (
                   <div className="text-center py-8 bg-muted/20 rounded-lg border border-dashed border-border">
                     <Users className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                    <p className="text-xs text-muted-foreground">No players registered yet.</p>
+                    <p className="text-xs text-muted-foreground">No approved teams yet.</p>
                   </div>
                 )}
               </div>
             </TabsContent>
 
             <TabsContent value="manage" className="mt-4 space-y-6">
+              {pendingRegistrations.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[13px] font-bold text-foreground flex items-center gap-2">
+                       <Shield className="w-4 h-4 text-amber-500" />
+                       Pending Applications
+                    </h4>
+                    <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px] font-bold">
+                      {pendingRegistrations.length} Review Needed
+                    </Badge>
+                  </div>
+                  <div className="space-y-3">
+                    {pendingRegistrations.map((reg) => (
+                      <div key={reg.id} className="p-4 bg-card rounded-2xl border border-border shadow-sm space-y-4">
+                         <div className="flex items-center justify-between">
+                           <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
+                                <Users className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold">{reg.teamName}</p>
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Captain: {reg.userName}</p>
+                              </div>
+                           </div>
+                         </div>
+                         <div className="flex gap-2">
+                           <Button 
+                            className="flex-1 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px] h-10 uppercase tracking-wider"
+                            onClick={() => handleRegistrationAction(reg.id, 'approve')}
+                           >
+                             Approve Entry
+                           </Button>
+                           <Button 
+                            variant="outline"
+                            className="flex-1 rounded-xl border-destructive/20 text-destructive hover:bg-destructive/10 font-bold text-[11px] h-10 uppercase tracking-wider"
+                            onClick={() => handleRegistrationAction(reg.id, 'reject')}
+                           >
+                             Reject
+                           </Button>
+                         </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="space-y-4">
                 <div>
                   <h4 className="text-sm font-bold mb-2">Assign Bracket Managers</h4>
@@ -1495,7 +1318,7 @@ export default function Tournaments() {
                       <div key={u.uid} className="flex items-center justify-between p-2 hover:bg-background rounded-lg transition-colors">
                         <div className="flex items-center gap-3">
                           <Avatar className="w-8 h-8">
-                            <AvatarImage src={u.photoURL} />
+                            <AvatarImage src={u.photoURL || undefined} />
                             <AvatarFallback className="text-[10px] font-bold bg-primary/10 text-primary">
                               {u.displayName.substring(0, 2).toUpperCase()}
                             </AvatarFallback>
@@ -1527,7 +1350,7 @@ export default function Tournaments() {
                             <div className="flex items-center gap-3">
                               {profile?.photoURL ? (
                                 <Avatar className="w-8 h-8 rounded-full">
-                                  <AvatarImage src={profile.photoURL} />
+                                  <AvatarImage src={profile.photoURL || undefined} />
                                   <AvatarFallback>{profile.displayName?.substring(0, 2).toUpperCase()}</AvatarFallback>
                                 </Avatar>
                               ) : (
@@ -1652,117 +1475,57 @@ export default function Tournaments() {
                 </div>
               </div>
 
-              {userCaptainedTeams.length > 0 ? (
-                <div className="space-y-4">
-                  <div className="grid gap-2">
-                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Select Your Team</Label>
-                    <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
-                      <SelectTrigger className="h-12 rounded-xl">
-                        <SelectValue placeholder="Select a team" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {userCaptainedTeams.map(team => (
-                          <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              <div className="space-y-4">
+                <div className="grid gap-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Enter Your Team Code</Label>
+                  <div className="relative">
+                    <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input 
+                      placeholder="e.g. AB1234" 
+                      className="pl-10 h-12 rounded-xl text-center font-black uppercase tracking-widest text-lg"
+                      value={teamCodeInput}
+                      onChange={(e) => setTeamCodeInput(e.target.value.toUpperCase())}
+                      maxLength={6}
+                    />
                   </div>
+                  <p className="text-[10px] text-muted-foreground text-center font-medium">Verify your team ownership by entering the security code from your Team dashboard.</p>
+                </div>
 
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Registration Info</h4>
-                    <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg border border-primary/10">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                          <Crown className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <span className="text-sm font-medium block text-foreground">Enrolling as Captain</span>
-                          <span className="text-[11px] text-primary font-bold">Team: {userCaptainedTeams.find(t => t.id === selectedTeamId)?.name}</span>
-                        </div>
-                      </div>
+                {verifiedTeam && (
+                  <div className="flex items-center gap-3 p-3 bg-emerald-500/5 rounded-xl border border-emerald-500/10">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-emerald-700">Team Identified</p>
+                      <p className="text-sm font-black uppercase italic text-foreground tracking-tight">{verifiedTeam.name}</p>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="p-4 bg-orange-500/10 border border-orange-500/20 rounded-xl">
-                  <div className="flex items-center gap-3 text-orange-500 mb-2">
-                    <Shield className="w-5 h-5" />
-                    <p className="font-bold text-sm">Action Required</p>
-                  </div>
-                  <p className="text-xs text-orange-700 leading-relaxed">
-                    You don't have any teams where you are the captain. Please create a team or be appointed as captain to register for tournaments.
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setConfirmTournament(null)} disabled={isSubmitting}>
+            <Button variant="outline" onClick={() => {
+              setConfirmTournament(null);
+              setTeamCodeInput('');
+              setVerifiedTeam(null);
+            }} disabled={isSubmitting || isVerifyingTeam}>
               Cancel
             </Button>
-            {userCaptainedTeams.length > 0 ? (
-              <Button 
-                className="bg-primary hover:bg-primary/90 text-white font-bold"
-                onClick={() => confirmTournament && handleRegister(confirmTournament)}
-                disabled={isSubmitting || !selectedTeamId}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    Registering...
-                  </>
-                ) : (
-                  'Confirm Enrollment'
-                )}
-              </Button>
-            ) : (
-              <Link 
-                to="/teams" 
-                className={cn(buttonVariants({ variant: "default" }), "bg-primary hover:bg-primary/90 text-white font-bold h-9 px-6 rounded-lg uppercase tracking-widest text-[10px] inline-flex items-center justify-center")}
-              >
-                Go to Teams
-              </Link>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {/* Inquiry Dialog */}
-      <Dialog open={!!inquiryTournament} onOpenChange={(open) => !open && setInquiryTournament(null)}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 uppercase tracking-tighter italic font-black">
-              <MessageSquare className="w-5 h-5 text-primary" />
-              Inquiry <span className="text-primary">Box</span>
-            </DialogTitle>
-            <DialogDescription className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground/60">
-              Tournament: <span className="text-white">{inquiryTournament?.name}</span>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-6 py-6">
-            <div className="grid gap-3">
-              <Label htmlFor="inquiry-msg" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Your Message</Label>
-              <textarea 
-                id="inquiry-msg"
-                className="flex min-h-[140px] w-full rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
-                placeholder="Ask registration details, fees, or anything else..."
-                value={inquiryMessage}
-                onChange={(e) => setInquiryMessage(e.target.value)}
-              />
-            </div>
-            <div className="bg-emerald-500/5 p-4 rounded-2xl border border-emerald-500/10 flex gap-3">
-              <Sparkles className="w-4 h-4 text-emerald-500 shrink-0" />
-              <p className="text-[11px] text-emerald-500/80 font-bold leading-relaxed italic">
-                The organizer will contact you regarding this inquiry via your registered profile or email.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
             <Button 
-              className="w-full font-black uppercase tracking-widest h-12 rounded-2xl bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 active:scale-95 transition-all"
-              onClick={handleSendInquiry}
-              disabled={isSubmitting || !inquiryMessage.trim()}
+              className="bg-primary hover:bg-primary/90 text-white font-bold"
+              onClick={verifyAndRegister}
+              disabled={isSubmitting || isVerifyingTeam || !teamCodeInput.trim() || teamCodeInput.length < 4}
             >
-              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : 'Send Inquiry'}
+              {isSubmitting || isVerifyingTeam ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  {isVerifyingTeam ? 'Verifying...' : 'Registering...'}
+                </>
+              ) : (
+                'Verify & Register'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

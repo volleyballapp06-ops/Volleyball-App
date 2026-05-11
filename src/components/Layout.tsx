@@ -257,7 +257,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <p className="text-[12px] font-bold mb-2 uppercase tracking-wider text-muted-foreground">Logged In As</p>
               <div className="flex items-center gap-3">
                 <img
-                  src={profile?.photoURL || user.photoURL || ''}
+                  src={profile?.photoURL || user.photoURL || undefined}
                   alt={user.displayName || ''}
                   className="w-10 h-10 rounded-full border border-border"
                   referrerPolicy="no-referrer"
@@ -307,7 +307,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </button>
               <Link to="/profile" className="w-8 h-8 bg-foreground rounded-lg flex items-center justify-center font-bold text-background shadow-sm border border-foreground/5 overflow-hidden shrink-0">
                 {profile?.photoURL ? (
-                  <img src={profile.photoURL} alt={profile.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={profile.photoURL || undefined} alt={profile.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
                   <span className="text-[10px]">{profile?.displayName?.substring(0, 2).toUpperCase()}</span>
                 )}
@@ -459,7 +459,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </button>
               <div className="w-10 h-10 md:w-12 md:h-12 bg-foreground rounded-xl md:rounded-2xl flex items-center justify-center font-bold text-background shadow-lg shadow-foreground/10 border border-foreground/5 overflow-hidden shrink-0">
                 {profile?.photoURL ? (
-                  <img src={profile.photoURL} alt={profile.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={profile.photoURL || undefined} alt={profile.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
                   profile?.displayName?.substring(0, 2).toUpperCase()
                 )}

@@ -10,7 +10,7 @@ export function generateGeohash(location: LocationData): string {
 }
 
 export function calculateDistance(loc1: LocationData, loc2: LocationData): number {
-  return distanceBetween([loc1.lat, loc2.lng], [loc2.lat, loc2.lng]);
+  return distanceBetween([loc1.lat, loc1.lng], [loc2.lat, loc2.lng]);
 }
 
 export function formatDistance(km: number): string {

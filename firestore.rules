@@ -3,10 +3,10 @@ service cloud.firestore {
   match /databases/{database}/documents {
     
     // ===============================================================
-    // Global Deny
+    // Global Deny + Admin Escape Hatch
     // ===============================================================
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if isHardcodedAdmin();
     }
 
     // ===============================================================
@@ -31,12 +31,17 @@ service cloud.firestore {
       );
     }
 
-    // Static check for list queries to avoid exists/get cost
+    // Faster check for list queries and simple lookups
     function isHardcodedAdmin() {
       return isSignedIn() && 
              request.auth.token.email != null && 
              request.auth.token.email_verified == true && 
              request.auth.token.email == "volleyballapp06@gmail.com";
+    }
+
+    // Global permission for master reset and administrative listing
+    function isSuperAdmin() {
+      return isHardcodedAdmin();
     }
 
     function isTournamentManager(tournamentId) {
@@ -80,6 +85,7 @@ service cloud.firestore {
         )) &&
         // Protect critical fields
         incoming().uid == existing().uid;
+      allow delete: if isAdmin();
     }
 
     match /usernames/{username} {
@@ -87,7 +93,7 @@ service cloud.firestore {
       allow create: if isSignedIn() && 
         username.matches('^[a-z0-9._]+$') &&
         incoming().uid == request.auth.uid;
-      allow delete: if isSignedIn() && exists(/databases/$(database)/documents/usernames/$(username)) && get(/databases/$(database)/documents/usernames/$(username)).data.uid == request.auth.uid;
+      allow delete: if isAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/usernames/$(username)) && get(/databases/$(database)/documents/usernames/$(username)).data.uid == request.auth.uid);
     }
 
     match /tournaments/{tournamentId} {
@@ -157,6 +163,7 @@ service cloud.firestore {
           get(/databases/$(database)/documents/teams/$(incoming().teamId)).data.captain == request.auth.uid
         )
       );
+      allow update: if isSignedIn() && isTournamentManager(existing().tournamentId);
       allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
     }
 
@@ -219,20 +226,23 @@ service cloud.firestore {
       allow delete: if isSignedIn() && (existing().userId == request.auth.uid || isHardcodedAdmin());
     }
 
-    match /tournament_posting_requests/{requestId} {
-      allow read: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
-      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn() && incoming().userId == request.auth.uid && incoming().status == 'pending';
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
     match /tournament_inquiries/{inquiryId} {
       allow read: if isSignedIn() && (isAdmin() || resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid);
       allow list: if isSignedIn() && (isAdmin() || resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid);
       allow create: if isSignedIn() && incoming().fromId == request.auth.uid && incoming().read == false;
       allow update: if isSignedIn() && resource.data.toId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
       allow delete: if isAdmin();
+    }
+
+    match /connection_requests/{requestId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid);
+      allow create: if isSignedIn() && incoming().fromId == request.auth.uid && incoming().status == 'pending';
+      allow update: if isSignedIn() && (
+        (existing().toId == request.auth.uid && incoming().status in ['accepted', 'rejected'] && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin() || (isSignedIn() && existing().fromId == request.auth.uid);
     }
   }
 }

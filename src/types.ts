@@ -28,6 +28,7 @@ export interface Team {
   name: string;
   captain: string;
   members: string[];
+  description?: string;
   logoURL?: string;
   teamCode: string;
   readyPlayers?: string[];
@@ -155,19 +156,8 @@ export interface AppNotification {
   type: 'info' | 'tournament' | 'match' | 'success';
   read: boolean;
   link?: string;
+  connectionRequestId?: string;
   createdAt: any;
-}
-
-export interface TournamentPostingRequest {
-  id: string;
-  userId: string;
-  userName: string;
-  userEmail: string;
-  message: string;
-  status: 'pending' | 'approved' | 'rejected';
-  adminNotes?: string;
-  createdAt: any;
-  updatedAt?: any;
 }
 
 export interface TournamentInquiry {

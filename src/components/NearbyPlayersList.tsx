@@ -73,7 +73,7 @@ export default function NearbyPlayersList() {
           className="flex items-center gap-3 p-2 hover:bg-muted/50 rounded-xl transition-colors group"
         >
           <Avatar className="w-10 h-10 border border-border group-hover:border-primary/30 transition-colors">
-            <AvatarImage src={player.photoURL} referrerPolicy="no-referrer" />
+            <AvatarImage src={player.photoURL || undefined} referrerPolicy="no-referrer" />
             <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
               {player.displayName?.substring(0, 2).toUpperCase()}
             </AvatarFallback>

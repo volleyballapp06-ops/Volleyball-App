@@ -26,6 +26,9 @@ export default function Teams() {
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const [isChallenging, setIsChallenging] = useState<Team | null>(null);
   const [isManagingTeam, setIsManagingTeam] = useState<Team | null>(null);
+  const [editingTeamName, setEditingTeamName] = useState('');
+  const [newTeamDescription, setNewTeamDescription] = useState('');
+  const [editingTeamDescription, setEditingTeamDescription] = useState('');
   const [isRemovingMember, setIsRemovingMember] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -96,6 +99,8 @@ export default function Teams() {
     if (isManagingTeam) {
       const fetchMembers = async () => {
         setIsFetchingMembers(true);
+        setEditingTeamName(isManagingTeam.name);
+        setEditingTeamDescription(isManagingTeam.description || '');
         try {
           const q = query(collection(db, 'users'), where('uid', 'in', isManagingTeam.members));
           const snapshot = await getDocs(q);
@@ -141,6 +146,7 @@ export default function Teams() {
     try {
       await addDoc(collection(db, 'teams'), {
         name: newTeamName.trim(),
+        description: newTeamDescription.trim(),
         captain: user.uid,
         members: [user.uid],
         logoURL: newTeamLogo || '',
@@ -152,6 +158,7 @@ export default function Teams() {
       toast.success('Team created successfully!');
       setIsCreatingTeam(false);
       setNewTeamName('');
+      setNewTeamDescription('');
       setNewTeamLogo('');
     } catch (error) {
       console.error('Team creation failed:', error);
@@ -400,6 +407,19 @@ export default function Teams() {
         status: 'pending',
         createdAt: serverTimestamp()
       });
+
+      // Notify the target team's captain
+      if (isChallenging.captain) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: isChallenging.captain,
+          title: 'New Team Challenge!',
+          message: `${myTeam.name} has challenged your team to a match!`,
+          type: 'match',
+          link: '/teams',
+          createdAt: serverTimestamp()
+        });
+      }
+
       toast.success('Challenge sent!');
       setIsChallenging(null);
     } catch (error) {
@@ -411,6 +431,23 @@ export default function Teams() {
   const handleChallengeStatus = async (challengeId: string, status: 'accepted' | 'rejected') => {
     try {
       await updateDoc(doc(db, 'teamChallenges', challengeId), { status });
+      
+      // Notify the challenger
+      const challenge = challenges.find(c => c.id === challengeId);
+      if (challenge) {
+        const challengerTeam = teams.find(t => t.id === challenge.fromTeamId);
+        if (challengerTeam?.captain) {
+          await addDoc(collection(db, 'notifications'), {
+            userId: challengerTeam.captain,
+            title: `Challenge ${status === 'accepted' ? 'Accepted' : 'Declined'}`,
+            message: `${challenge.toTeamName} has ${status} your challenge!`,
+            type: status === 'accepted' ? 'success' : 'info',
+            link: '/teams',
+            createdAt: serverTimestamp()
+          });
+        }
+      }
+
       toast.success(`Challenge ${status}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `teamChallenges/${challengeId}`);
@@ -593,6 +630,33 @@ export default function Teams() {
     }
   };
 
+  const handleUpdateTeamDetails = async () => {
+    if (!isManagingTeam || !editingTeamName.trim()) return;
+    const nameChanged = editingTeamName.trim() !== isManagingTeam.name;
+    const descChanged = editingTeamDescription.trim() !== (isManagingTeam.description || '');
+    
+    if (!nameChanged && !descChanged) return;
+
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, 'teams', isManagingTeam.id), {
+        name: editingTeamName.trim(),
+        description: editingTeamDescription.trim()
+      });
+      setIsManagingTeam({ 
+        ...isManagingTeam, 
+        name: editingTeamName.trim(),
+        description: editingTeamDescription.trim()
+      });
+      toast.success('Team details updated!');
+    } catch (error) {
+      console.error('Failed to update team details:', error);
+      toast.error('Failed to update team details');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const myTeam = teams.find(t => t.captain === user?.uid || t.members.includes(user?.uid || ''));
   const activeTeams = teams.filter(t => {
     if (t.archived) return false;
@@ -713,7 +777,7 @@ export default function Teams() {
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative group cursor-pointer" onClick={() => logoInputRef.current?.click()}>
                     <Avatar className="w-24 h-24 rounded-2xl border-4 border-muted shadow-xl overflow-hidden group-hover:border-primary/30 transition-colors">
-                      <AvatarImage src={newTeamLogo} className="object-cover" />
+                      <AvatarImage src={newTeamLogo || undefined} className="object-cover" />
                       <AvatarFallback className="bg-muted text-muted-foreground">
                         <Shield className="w-10 h-10" />
                       </AvatarFallback>
@@ -739,6 +803,17 @@ export default function Teams() {
                     onChange={(e) => setNewTeamName(e.target.value)}
                     placeholder="e.g., Chennai Smashers"
                     className="h-12 rounded-xl"
+                  />
+                </div>
+                
+                <div className="grid gap-2">
+                  <Label htmlFor="teamDescription" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Team Motto / Description</Label>
+                  <textarea 
+                    id="teamDescription"
+                    value={newTeamDescription}
+                    onChange={(e) => setNewTeamDescription(e.target.value)}
+                    className="flex min-h-[80px] w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Describe your team's playstyle or mission..."
                   />
                 </div>
               </div>
@@ -796,7 +871,7 @@ export default function Teams() {
                   <div className="flex items-start justify-between mb-4">
                     <div className="relative">
                       <Avatar className="w-14 h-14 rounded-xl border-2 border-primary/20 shadow-sm overflow-hidden">
-                        <AvatarImage src={team.logoURL} className="object-cover" />
+                        <AvatarImage src={team.logoURL || undefined} className="object-cover" />
                         <AvatarFallback className="bg-primary/10 text-primary">
                           <Shield className="w-6 h-6" />
                         </AvatarFallback>
@@ -813,6 +888,11 @@ export default function Teams() {
                     </div>
                   </div>
                   <h3 className="text-[20px] font-bold text-foreground mb-1">{team.name}</h3>
+                  {team.description && (
+                    <p className="text-muted-foreground text-[11px] mb-2 font-medium italic line-clamp-2">
+                      {team.description}
+                    </p>
+                  )}
                   <p className="text-muted-foreground text-[13px] mb-6 flex items-center gap-1">
                     <Users className="w-4 h-4" /> {team.members.length} Members
                     {team.readyPlayers && team.readyPlayers.length > 0 && (
@@ -1112,30 +1192,72 @@ export default function Teams() {
           <div className="p-8">
             <DialogHeader className="mb-6">
               <div className="flex items-center gap-4 mb-2">
-                <div className="relative group cursor-pointer" onClick={() => logoInputRef.current?.click()}>
-                  <Avatar className="w-16 h-16 rounded-xl border-2 border-primary/20 shadow-sm overflow-hidden">
-                    <AvatarImage src={isManagingTeam?.logoURL} className="object-cover" />
-                    <AvatarFallback className="bg-primary/10 text-primary">
-                      <Shield className="w-8 h-8" />
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
-                    <Camera className="w-5 h-5 text-white" />
-                  </div>
-                  {isUploadingLogo && (
-                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center rounded-xl">
-                      <Loader2 className="w-5 h-5 text-white animate-spin" />
+                <div className="flex flex-col items-center gap-2">
+                  <div className="relative group cursor-pointer" onClick={() => logoInputRef.current?.click()}>
+                    <Avatar className="w-20 h-20 rounded-xl border-2 border-primary/20 shadow-sm overflow-hidden">
+                      <AvatarImage src={isManagingTeam?.logoURL || undefined} className="object-cover" />
+                      <AvatarFallback className="bg-primary/10 text-primary">
+                        <Shield className="w-10 h-10" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
+                      <Camera className="w-6 h-6 text-white" />
                     </div>
-                  )}
+                    {isUploadingLogo && (
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center rounded-xl">
+                        <Loader2 className="w-6 h-6 text-white animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                  <Button 
+                    variant="link" 
+                    size="sm" 
+                    className="h-auto p-0 text-[9px] font-black uppercase text-primary tracking-widest"
+                    onClick={() => logoInputRef.current?.click()}
+                  >
+                    Change Logo
+                  </Button>
                 </div>
-                <div>
-                  <DialogTitle className="text-2xl font-black text-foreground">Manage {isManagingTeam?.name}</DialogTitle>
-                  <p className="text-muted-foreground text-xs font-medium">As captain, you can manage your squad and logo (Max 500KB).</p>
+                <div className="flex-1">
+                  <DialogTitle className="text-2xl font-black text-foreground">Manage Squad</DialogTitle>
+                  <p className="text-muted-foreground text-xs font-medium">Configure team identity and personnel.</p>
                 </div>
               </div>
             </DialogHeader>
 
-            <div className="space-y-6">
+            <div className="space-y-5">
+              <div className="grid gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="editTeamName" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Team Name</Label>
+                  <Input 
+                    id="editTeamName"
+                    value={editingTeamName}
+                    onChange={(e) => setEditingTeamName(e.target.value)}
+                    className="h-11 rounded-xl bg-muted/30 border-none focus-visible:ring-primary"
+                    placeholder="Enter team name"
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="editTeamDescription" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Team Motto/Description</Label>
+                  <textarea 
+                    id="editTeamDescription"
+                    value={editingTeamDescription}
+                    onChange={(e) => setEditingTeamDescription(e.target.value)}
+                    className="flex min-h-[80px] w-full rounded-xl border-none bg-muted/30 px-3 py-2 text-sm focus-visible:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Tell the league about your squad..."
+                  />
+                </div>
+
+                <Button 
+                  onClick={handleUpdateTeamDetails}
+                  disabled={isSubmitting || !editingTeamName.trim() || (editingTeamName.trim() === isManagingTeam?.name && editingTeamDescription.trim() === (isManagingTeam?.description || ''))}
+                  className="w-full h-11 rounded-xl bg-primary text-white font-bold"
+                >
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : 'Save Identity Changes'}
+                </Button>
+              </div>
+
               <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 mb-2">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-[10px] font-black text-primary uppercase tracking-widest">Share Team Code</h4>
@@ -1211,7 +1333,7 @@ export default function Teams() {
                       <div key={member.uid} className="flex items-center justify-between p-3 bg-muted rounded-2xl border border-border group hover:border-primary/20 transition-colors">
                         <div className="flex items-center gap-3">
                           <Avatar className="w-10 h-10 border-2 border-background shadow-sm">
-                            <AvatarImage src={member.photoURL} />
+                            <AvatarImage src={member.photoURL || undefined} />
                             <AvatarFallback className="bg-primary/10 text-primary text-xs font-black">
                               {member.displayName?.substring(0, 2).toUpperCase()}
                             </AvatarFallback>

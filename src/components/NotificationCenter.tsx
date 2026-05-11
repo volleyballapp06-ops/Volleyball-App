@@ -3,7 +3,7 @@ import { db, OperationType, handleFirestoreError } from '../lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, deleteDoc, writeBatch, serverTimestamp, getDocs, limit, getDoc } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { AppNotification, Tournament } from '../types';
-import { Bell, BellOff, X, Check, ExternalLink, Info, Trophy, MapPin, Trash2 } from 'lucide-react';
+import { Bell, BellOff, X, Check, ExternalLink, Info, Trophy, MapPin, Trash2, UserCheck, UserX } from 'lucide-react';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 import { Badge } from './ui/badge';
@@ -13,12 +13,75 @@ import { formatDistanceToNow } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { calculateDistance, getCurrentPosition } from '../lib/geo';
 import { toast } from 'sonner';
+import { arrayUnion } from 'firebase/firestore';
 
 export default function NotificationCenter() {
   const { user, profile } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
+  const handleConnectionRequest = async (notif: AppNotification, action: 'accepted' | 'rejected') => {
+    if (!user || !notif.connectionRequestId) return;
+    
+    setProcessingId(notif.id);
+    try {
+      const batch = writeBatch(db);
+      const requestRef = doc(db, 'connection_requests', notif.connectionRequestId);
+      const requestSnap = await getDoc(requestRef);
+      
+      if (!requestSnap.exists()) {
+        toast.error('Request no longer exists');
+        await updateDoc(doc(db, 'notifications', notif.id), { read: true });
+        return;
+      }
+
+      const requestData = requestSnap.data();
+      if (requestData.status !== 'pending') {
+        toast.info('Request has already been processed');
+        await updateDoc(doc(db, 'notifications', notif.id), { read: true });
+        return;
+      }
+
+      if (action === 'accepted') {
+        // Update both users connections
+        const fromUserRef = doc(db, 'users', requestData.fromId);
+        const toUserRef = doc(db, 'users', requestData.toId);
+        
+        batch.update(fromUserRef, { connections: arrayUnion(requestData.toId) });
+        batch.update(toUserRef, { connections: arrayUnion(requestData.fromId) });
+        
+        // Notify the sender
+        const notificationRef = doc(collection(db, 'notifications'));
+        batch.set(notificationRef, {
+          userId: requestData.fromId,
+          title: 'Connection Accepted!',
+          message: `${requestData.toName} accepted your invitation. You are now connected!`,
+          type: 'success',
+          link: `/players`,
+          createdAt: serverTimestamp(),
+          read: false
+        });
+      }
+
+      batch.update(requestRef, { 
+        status: action,
+        updatedAt: serverTimestamp()
+      });
+
+      // Mark notification as read
+      batch.update(doc(db, 'notifications', notif.id), { read: true });
+
+      await batch.commit();
+      toast.success(`Connection ${action}`);
+    } catch (error) {
+      console.error(`Failed to ${action} request:`, error);
+      toast.error(`Error processing request`);
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -37,6 +100,25 @@ export default function NotificationCenter() {
         const timeB = b.createdAt?.toDate?.()?.getTime() || 0;
         return timeB - timeA;
       });
+
+      // Handle native push if enabled and it's a NEW notification
+      if (Notification.permission === 'granted' && !loading) {
+        snapshot.docChanges().forEach(change => {
+          if (change.type === 'added') {
+            const notif = change.doc.data() as AppNotification;
+            // Only notify if it was created very recently (within 30 seconds) to avoid spam on initial load
+            const now = new Date().getTime();
+            const created = notif.createdAt?.toDate?.()?.getTime() || now;
+            if (now - created < 30000) {
+              new Notification(notif.title, {
+                body: notif.message,
+                icon: '/logo.png'
+              });
+            }
+          }
+        });
+      }
+
       setNotifications(sorted);
       setLoading(false);
     }, (error) => {
@@ -44,7 +126,7 @@ export default function NotificationCenter() {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, loading]);
 
   // Scanner for new tournaments and nearby matches
   useEffect(() => {
@@ -296,6 +378,29 @@ export default function NotificationCenter() {
                       <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
                         {notif.message}
                       </p>
+                      
+                      {notif.connectionRequestId && !notif.read && (
+                        <div className="flex gap-2 pt-2">
+                          <Button 
+                            size="sm" 
+                            className="h-8 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] px-3 gap-1"
+                            onClick={() => handleConnectionRequest(notif, 'accepted')}
+                            disabled={processingId === notif.id}
+                          >
+                            <UserCheck className="w-3 h-3" /> Accept
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-8 rounded-lg border-red-200 text-red-500 hover:bg-red-50 font-bold text-[10px] px-3 gap-1"
+                            onClick={() => handleConnectionRequest(notif, 'rejected')}
+                            disabled={processingId === notif.id}
+                          >
+                            <UserX className="w-3 h-3" /> Decline
+                          </Button>
+                        </div>
+                      )}
+
                       <div className="flex items-center gap-2 pt-1">
                         {!notif.read && (
                           <Button 
