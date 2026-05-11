@@ -77,7 +77,7 @@ export default function NotificationCenter() {
       toast.success(`Connection ${action}`);
     } catch (error) {
       console.error(`Failed to ${action} request:`, error);
-      toast.error(`Error processing request`);
+      toast.error(`Failed to process connection: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setProcessingId(null);
     }

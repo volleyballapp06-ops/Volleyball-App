@@ -202,7 +202,7 @@ export default function Players() {
       toast.success(`Request ${action}`);
     } catch (error) {
       console.error(`Failed to ${action} request:`, error);
-      toast.error(`Error processing request`);
+      toast.error(`Failed to ${action} connection: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 

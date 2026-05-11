@@ -71,7 +71,13 @@ service cloud.firestore {
       allow create: if isOwner(userId) && 
         incoming().keys().hasAll(['uid', 'displayName', 'email', 'role']) &&
         incoming().uid == request.auth.uid;
-      allow update: if (isOwner(userId) || isAdmin()) &&
+      allow update: if (isOwner(userId) || isAdmin() || (
+        isSignedIn() && 
+        incoming().diff(existing()).affectedKeys().hasOnly(['connections']) &&
+        incoming().get('connections', []).hasAll(existing().get('connections', [])) &&
+        incoming().get('connections', []).size() == existing().get('connections', []).size() + 1 &&
+        request.auth.uid in incoming().get('connections', [])
+      )) &&
         // Protect role and special permissions from self-escalation
         (!incoming().diff(existing()).affectedKeys().hasAny(['role', 'canPostTournaments', 'isBanned']) || isAdmin()) &&
         // Protect sensitive fields - only owner/admin can change email
