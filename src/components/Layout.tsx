@@ -123,8 +123,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const handleLogin = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login failed', error);
+      if (error?.code === 'auth/popup-blocked') {
+        toast.error('Login popup was blocked. Please allow popups for this site and try again.');
+      } else if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+        // User dismissed — no toast needed
+      } else if (error?.code === 'auth/network-request-failed') {
+        toast.error('Network error. Check your connection and try again.');
+      } else if (error?.code === 'auth/unauthorized-domain') {
+        toast.error('This domain is not authorized for login. Please contact support.');
+      } else {
+        toast.error('Login failed. Please try again.');
+      }
     }
   };
 
@@ -133,6 +144,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       await signOut(auth);
     } catch (error) {
       console.error('Logout failed', error);
+      toast.error('Sign out failed. Please try again.');
     }
   };
 
