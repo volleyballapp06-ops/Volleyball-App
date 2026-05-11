@@ -1,15 +1,13 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Settings as SettingsIcon, Bell, Shield, Eye, Smartphone, LogOut, Sun, Moon, Monitor } from 'lucide-react';
+import { Settings as SettingsIcon, Bell, Shield, Eye, Smartphone, LogOut } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../hooks/useAuth';
 import { signOut, auth } from '../lib/firebase';
 import { toast } from 'sonner';
-import { useTheme } from '../components/ThemeProvider';
 
 export default function Settings() {
   const { user, profile } = useAuth();
-  const { theme, setTheme } = useTheme();
   const [notifications, setNotifications] = useState(true);
   const [privacy, setPrivacy] = useState(true);
 
@@ -30,50 +28,6 @@ export default function Settings() {
       </div>
 
       <div className="space-y-6">
-        {/* Appearance Section */}
-        <section className="bg-card rounded-[2rem] p-8 border border-border shadow-sm">
-          <h2 className="text-lg font-black uppercase tracking-tight mb-6 flex items-center gap-2 text-foreground">
-            <Sun className="w-5 h-5 text-primary" />
-            Appearance
-          </h2>
-          
-          <div className="grid grid-cols-3 gap-3">
-            <button
-              onClick={() => setTheme('light')}
-              className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${
-                theme === 'light' 
-                  ? 'border-primary bg-primary/5 text-primary' 
-                  : 'border-border bg-muted/50 text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              <Sun className="w-6 h-6" />
-              <span className="text-xs font-bold uppercase tracking-wider">Light</span>
-            </button>
-            <button
-              onClick={() => setTheme('dark')}
-              className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${
-                theme === 'dark' 
-                  ? 'border-primary bg-primary/5 text-primary' 
-                  : 'border-border bg-muted/50 text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              <Moon className="w-6 h-6" />
-              <span className="text-xs font-bold uppercase tracking-wider">Dark</span>
-            </button>
-            <button
-              onClick={() => setTheme('system')}
-              className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${
-                theme === 'system' 
-                  ? 'border-primary bg-primary/5 text-primary' 
-                  : 'border-border bg-muted/50 text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              <Monitor className="w-6 h-6" />
-              <span className="text-xs font-bold uppercase tracking-wider">System</span>
-            </button>
-          </div>
-        </section>
-
         {/* Account Section */}
         <section className="bg-card rounded-[2rem] p-8 border border-border shadow-sm">
           <h2 className="text-lg font-black uppercase tracking-tight mb-6 flex items-center gap-2 text-foreground">

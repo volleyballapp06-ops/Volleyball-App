@@ -1,15 +1,12 @@
 import React from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { Trophy, MapPin, Users, User, Home, LogOut, Menu, X, Settings, LayoutDashboard, ArrowRight, Zap, Sun, Moon } from 'lucide-react';
+import { Trophy, MapPin, Users, User, Home, LogOut, Menu, X, Settings, LayoutDashboard, ArrowRight, Zap } from 'lucide-react';
 import { Button } from './ui/button';
 import { auth, signInWithPopup, googleProvider, signOut } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
-import { ThemeToggle } from './ThemeToggle';
-import { useTheme } from './ThemeProvider';
 import NotificationCenter from './NotificationCenter';
-
 import { OnboardingTour } from './OnboardingTour';
 import { cn } from '../lib/utils';
 
@@ -225,8 +222,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <OnboardingTour />
       {/* Sidebar - Desktop */}
       <aside className="hidden lg:flex w-[260px] bg-card border-r border-border flex-col p-10 fixed h-full">
-        <div className="flex items-center justify-between mb-10">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-10">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
               <Trophy className="w-5 h-5 text-white" />
             </div>
@@ -234,8 +230,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               VOLLEY CONNECT
             </span>
           </div>
-          <ThemeToggle />
-        </div>
 
         <nav className="flex-1">
           <ul className="space-y-3">
@@ -303,7 +297,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
         <div className="flex items-center gap-2">
           <NotificationCenter />
-          <ThemeToggle />
           {user && (
             <div className="flex items-center gap-2 mr-1">
               <button onClick={handleLocationClick} className="text-right">

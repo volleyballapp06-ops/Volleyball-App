@@ -13,7 +13,7 @@ import { ThemeProvider } from './components/ThemeProvider';
 
 export default function App() {
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="volley-connect-theme">
+    <ThemeProvider defaultTheme="light" storageKey="volley-connect-theme">
       <Router>
         <Layout>
           <Routes>
