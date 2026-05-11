@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import NotificationCenter from './NotificationCenter';
 import { OnboardingTour } from './OnboardingTour';
 import { cn } from '../lib/utils';
+import { Logo } from './Logo';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
@@ -137,9 +138,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center animate-bounce">
-            <Trophy className="w-6 h-6 text-white" />
-          </div>
+          <Logo size="lg" className="animate-bounce" />
           <p className="text-muted-foreground font-medium animate-pulse">Loading Volley Connect...</p>
         </div>
       </div>
@@ -162,9 +161,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         >
           {/* Logo */}
           <div className="flex flex-col items-center gap-4">
-            <div className="w-20 h-20 bg-primary rounded-3xl flex items-center justify-center shadow-2xl shadow-primary/20 rotate-3">
-              <Trophy className="w-10 h-10 text-primary-foreground" />
-            </div>
+            <Logo size="xl" className="rotate-3 shadow-2xl shadow-primary/40" />
             <h1 className="text-4xl md:text-6xl font-black tracking-tighter uppercase italic">
               Volley <span className="text-primary italic">Connect</span>
             </h1>
@@ -223,9 +220,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Sidebar - Desktop */}
       <aside className="hidden lg:flex w-[260px] bg-card border-r border-border flex-col p-10 fixed h-full">
           <div className="flex items-center gap-2 mb-10">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <Trophy className="w-5 h-5 text-white" />
-            </div>
+            <Logo size="sm" />
             <span className="text-[17px] font-extrabold text-primary tracking-tighter">
               VOLLEY CONNECT
             </span>
@@ -288,9 +283,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Mobile Nav Header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-card border-b border-border z-50 flex items-center justify-between px-4 text-foreground">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center">
-            <Trophy className="w-4 h-4 text-white" />
-          </div>
+          <Logo size="sm" />
           <span className="text-md font-extrabold text-primary tracking-tighter">
             VOLLEY CONNECT
           </span>
